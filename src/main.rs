@@ -1,14 +1,19 @@
-use std::process;
 use clap::Parser;
-use secrets::Args;
+use secrets::Cli;
+use std::process;
 
+#[tokio::main]
+async fn main() {
+    dotenv::dotenv().ok();
+    let args = Cli::parse();
 
-fn main() {
-    let args = Args::parse(); 
-    
-    if let Err(e) = secrets::run(args) {
-         eprintln!("Application error: {e}");
-         process::exit(1);
+    match secrets::run(args).await {
+        Err(e) => {
+            eprintln!("Aplication error: {e}");
+            process::exit(1);
+        }
+        Ok(response) => {
+            println!("{response}");
+        }
     }
 }
-

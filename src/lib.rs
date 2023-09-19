@@ -1,23 +1,54 @@
-use std::error::Error;
-use clap::Parser;
+mod api;
 
-#[derive(Parser, Debug)]
-pub struct Args {
-    #[arg(short,long, help("Message to encrypt"))]
-    pub encrypt: Option<String>, 
-    #[arg(short,long, help("Link to decrypt message from"))]
-    pub decrypt: Option<String>,
+use api::APIClient;
+use clap::{Args, Parser, Subcommand};
+use std::error::Error;
+
+#[derive(Parser)]
+pub struct Cli {
+    #[command(subcommand)]
+    command: Commands,
 }
 
-pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
-   if let Some(message) = args.encrypt {
-       println!("Encrypting {message}");
-   }
+#[derive(Subcommand)]
+enum Commands {
+    /// Encrypt a secret
+    Encrypt(EncryptArgs),
+    /// Decrypt a secret
+    Decrypt(DecryptArgs),
+}
 
-   if let Some(link) = args.decrypt {
-       println!("Decrypting from {link}");
-   }
+#[derive(Args)]
+struct EncryptArgs {
+    #[arg(short, long, help("Message to encrypt"))]
+    secret: String,
+    #[arg(short, long, default_value_t=500, help("Secret time to live"))]
+    expiry: u64,
+}
 
-   Ok(())
+#[derive(Args)]
+struct DecryptArgs {
+    #[arg(short, long, help("Room id to decrypt message from"))]
+    room_id: String,
+}
 
+pub async fn run(args: Cli) -> Result<String, Box<dyn Error>> {
+    let client_api = APIClient::new();
+
+    match &args.command {
+        Commands::Encrypt(EncryptArgs { secret, expiry }) => {
+            let room = client_api
+                .submit_secret(secret.to_string(), *expiry)
+                .await?;
+            let client_response = format!("Secret submited to room with id: {room}");
+            Ok(client_response)
+
+
+        }
+        Commands::Decrypt(DecryptArgs { room_id }) => {
+            let secret = client_api.get_secret(room_id.to_string()).await?;
+            let client_response = format!("Secret found: {secret}");
+            Ok(client_response)
+        }
+    }
 }
