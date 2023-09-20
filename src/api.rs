@@ -1,7 +1,7 @@
-use reqwest::Client;
+use const_env::from_env;
+use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use const_env::from_env;
 
 pub struct APIClient {
     client: Client,
@@ -13,15 +13,32 @@ struct CreateSecret {
     expiry: u64,
 }
 
+trait Returnable{
+    fn get_return_value(&self) -> &String;
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct Room {
-    room_id: String
+    room_id: String,
+}
+
+impl Returnable for Room {
+    fn get_return_value(&self) -> &String {
+        &self.room_id
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Secret {
-    secret: String
+    secret: String,
 }
+
+impl Returnable for Secret {
+    fn get_return_value(&self) -> &String {
+        &self.secret
+    }
+}
+
 
 #[from_env("API_URL")]
 const API_URL: &'static str = "";
@@ -35,9 +52,9 @@ impl APIClient {
 
     pub async fn get_secret(&self, room_id: String) -> Result<String, Box<dyn Error>> {
         let url = format!("{}/api/secrets/{}", API_URL, room_id);
-        let response: Secret = self.client.get(url).send().await?.json().await?;
-
-        Ok(response.secret)
+        let response = self.client.get(url).send().await?;
+        
+        Self::handle_response::<Secret>(response).await 
     }
 
     pub async fn submit_secret(
@@ -47,16 +64,23 @@ impl APIClient {
     ) -> Result<String, Box<dyn Error>> {
         let params = CreateSecret { secret, expiry };
         let url = format!("{}/api/secrets", API_URL);
-        
-        let response: Room = self
-            .client
-            .post(url)
-            .json(&params)
-            .send()
-            .await?
-            .json()
-            .await?;
-         
-        Ok(response.room_id)
+
+        let response = self.client.post(url).json(&params).send().await?;
+
+        Self::handle_response::<Room>(response).await 
+    }
+
+    async fn handle_response<T>(response: Response) -> Result<String, Box<dyn Error>>
+    where
+        T: for<'da> Deserialize<'da> + Returnable,
+    {
+        let id = response.status();
+        if id == 200 {
+            let response: T = response.json().await?;
+
+            Ok(response.get_return_value().to_string())
+        } else {
+            Err(format!("error in request with status {}", id))?
+        }
     }
 }
